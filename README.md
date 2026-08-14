@@ -7,7 +7,7 @@ for correctness testing and recall/latency benchmarking.
 ## Status
 
 - [x] Brute-force exact k-NN baseline
-- [ ] Flat graph construction (single layer)
+- [x] Flat graph construction (single layer)
 - [ ] Hierarchical layers
 - [ ] Parameter sweeps (M, efConstruction, efSearch)
 - [ ] Benchmark suite (recall@k vs. QPS)

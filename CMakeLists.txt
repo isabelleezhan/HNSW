@@ -11,9 +11,10 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
 
 include_directories(include)
 
-# Core library sources -- add hnsw.cpp here once it exists
+# Core library sources 
 add_library(hnsw_core
     src/brute_force.cpp
+    src/hnsw.cpp
 )
 
 add_executable(hnsw_cli src/main.cpp)

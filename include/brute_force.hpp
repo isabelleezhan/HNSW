@@ -1,4 +1,5 @@
-#pragma once
+#ifndef BRUTE_FORCE_HPP
+#define BRUTE_FORCE_HPP
 #include "types.hpp"
 #include <vector>
 
@@ -15,3 +16,5 @@ private:
   std::vector<Vec> data_;
   int dim_;
 };
+
+#endif

@@ -21,6 +21,7 @@ struct Neighbor {
   float dist;
   // For max-heaps (keep the k smallest, pop the largest when exceed k)
   bool operator<(const Neighbor &other) const { return dist < other.dist; }
+  bool operator>(const Neighbor& other) const {return dist > other.dist;}
 };
 
 #endif
