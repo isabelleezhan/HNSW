@@ -1,0 +1,14 @@
+build/
+*.o
+*.obj
+*.exe
+*.out
+*.csv
+.cache/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+.vscode/
+.idea/
+.DS_Store
