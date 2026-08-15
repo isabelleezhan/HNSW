@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 project(hnsw_cpp LANGUAGES CXX)
+find_package(pybind11 CONFIG REQUIRED)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,3 +26,12 @@ target_link_libraries(run_tests hnsw_core)
 
 add_executable(run_bench bench/benchmark.cpp)
 target_link_libraries(run_bench hnsw_core)
+
+add_executable(run_bench_large bench/benchmark_large_scale.cpp)
+target_link_libraries(run_bench_large hnsw_core)
+
+pybind11_add_module(
+    hnsw_cpp
+    bindings.cpp
+    src/hnsw.cpp
+)
