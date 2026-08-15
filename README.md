@@ -9,8 +9,10 @@ for correctness testing and recall/latency benchmarking.
 - [x] Brute-force exact k-NN baseline
 - [x] Flat graph construction (single layer)
 - [x] Hierarchical layers
-- [ ] Parameter sweeps (M, efConstruction, efSearch)
-- [ ] Benchmark suite (recall@k vs. QPS)
+- [x] Parameter sweeps (M, efConstruction, efSearch)
+- [x] Benchmark suite (recall@k vs. QPS)
+- [ ] pybind11 bindings
+- [ ] Mini recommendation demo
 
 ## Build
 

@@ -1,10 +1,12 @@
 #include "hnsw.hpp"
 #include "types.hpp"
+#include <algorithm>
 #include <queue>
 #include <set>
+#include <stdexcept>
 
 HNSWIndex::HNSWIndex(int dim, int M, int ef_construction)
-    : dim_(dim), M_(M), ef_construction_(ef_construction),
+    : dim_(dim), M_(M), M0_(2 * M), ef_construction_(ef_construction),
       mL_(1.0f / std::log(static_cast<float>(M))) {}
 
 int HNSWIndex::random_level() const {
@@ -32,10 +34,9 @@ std::vector<Neighbor> HNSWIndex::greedy_search(const Vec &query, VecId entry,
     candidates.pop();
 
     // if c farther than worst item in bestsofar (full) -> stop
-    if (bestsofar.size() == static_cast<size_t>(ef) && bestsofar.top() < c) {
+    if (bestsofar.size() == static_cast<size_t>(ef) && c.dist > bestsofar.top().dist) {
       break;
     }
-
     std::vector<VecId> neighbors = nodes_[c.id].neighbors[lvl];
     for (VecId nb : neighbors) {
       if (visited.count(nb) != 0) {
@@ -43,14 +44,18 @@ std::vector<Neighbor> HNSWIndex::greedy_search(const Vec &query, VecId entry,
       }
 
       float d = squared_l2(query, data_[nb]);
-
-      candidates.push({nb, d});
       visited.insert(nb);
-      if (bestsofar.size() < static_cast<size_t>(ef)) {
+
+      bool should_add = bestsofar.size() < static_cast<size_t>(ef) ||
+                        d < bestsofar.top().dist;
+
+      if (should_add) {
+        candidates.push({nb, d});
         bestsofar.push({nb, d});
-      } else if (bestsofar.size() == ef && bestsofar.top().dist > d) {
-        bestsofar.pop();
-        bestsofar.push({nb, d});
+
+        if (bestsofar.size() > static_cast<size_t>(ef)) {
+          bestsofar.pop();
+        }
       }
     }
   }
@@ -67,7 +72,8 @@ std::vector<Neighbor> HNSWIndex::greedy_search(const Vec &query, VecId entry,
 
 void HNSWIndex::trim_neighbors(VecId id, int lvl) {
   auto &neighbor_ids = nodes_[id].neighbors[lvl];
-  if (neighbor_ids.size() <= static_cast<size_t>(M_))
+  int max_neighbors = (lvl == 0) ? M0_ : M_;
+  if (neighbor_ids.size() <= static_cast<size_t>(max_neighbors))
     return;
 
   // Compute distance from `id` to each of its neighbors
@@ -82,20 +88,89 @@ void HNSWIndex::trim_neighbors(VecId id, int lvl) {
       scored.begin(), scored.end(),
       [](const Neighbor &a, const Neighbor &b) { return a.dist < b.dist; });
 
-  std::vector<VecId> kept;
-  for (int i = 0; i < M_; ++i)
-    kept.push_back(scored[i].id);
+  //   std::vector<VecId> kept;
+  //   for (int i = 0; i < max_neighbors; i++)
+  //     kept.push_back(scored[i].id);
 
-  // For every neighbor dropping, remove the reverse edge back to `id`
-  for (size_t i = M_; i < scored.size(); ++i) {
-    VecId dropped = scored[i].id;
-    auto &their_neighbors = nodes_[dropped].neighbors[lvl];
-    their_neighbors.erase(
-        std::remove(their_neighbors.begin(), their_neighbors.end(), id),
-        their_neighbors.end());
+  //   // For every neighbor dropping, remove the reverse edge back to `id`
+  //   for (size_t i = max_neighbors; i < scored.size(); i++) {
+  //     VecId dropped = scored[i].id;
+  //     auto &their_neighbors = nodes_[dropped].neighbors[lvl];
+  //     their_neighbors.erase(
+  //         std::remove(their_neighbors.begin(), their_neighbors.end(), id),
+  //         their_neighbors.end());
+  //   }
+
+  auto selected = select_neighbors_heuristic(data_[id], scored, max_neighbors);
+  std::vector<VecId> kept;
+  kept.reserve(selected.size());
+
+  for (const auto &neighbor : selected) {
+    kept.push_back(neighbor.id);
+  }
+
+  for (const auto &candidate : scored) {
+    bool was_kept =
+        std::find(kept.begin(), kept.end(), candidate.id) != kept.end();
+
+    if (!was_kept) {
+      VecId dropped = candidate.id;
+
+      auto &their_neighbors = nodes_[dropped].neighbors[lvl];
+
+      their_neighbors.erase(
+          std::remove(their_neighbors.begin(), their_neighbors.end(), id),
+          their_neighbors.end());
+    }
   }
 
   neighbor_ids = kept;
+}
+
+std::vector<Neighbor>
+HNSWIndex::select_neighbors_heuristic(const Vec &query,
+                                      const std::vector<Neighbor> &candidates,
+                                      int max_neighbors) const {
+
+  std::vector<Neighbor> selected;
+  std::vector<Neighbor> rejected;
+
+  for (const auto &candidate : candidates) {
+
+    if (selected.size() >= static_cast<size_t>(max_neighbors)) {
+      break;
+    }
+
+    bool diverse = true;
+
+    for (const auto &chosen : selected) {
+
+      float candidate_to_chosen =
+          squared_l2(data_[candidate.id], data_[chosen.id]);
+
+      if (candidate_to_chosen < candidate.dist) {
+        diverse = false;
+        break;
+      }
+    }
+
+    if (diverse) {
+      selected.push_back(candidate);
+    } else {
+      rejected.push_back(candidate);
+    }
+  }
+
+  // Fill remaining capacity with the nearest rejected candidates.
+  for (const auto &candidate : rejected) {
+    if (selected.size() >= static_cast<size_t>(max_neighbors)) {
+      break;
+    }
+
+    selected.push_back(candidate);
+  }
+
+  return selected;
 }
 
 std::vector<Neighbor> HNSWIndex::search(const Vec &query, int k,
@@ -163,11 +238,22 @@ void HNSWIndex::add(const Vec &v) {
     auto candidates = greedy_search(v, curr_entry, ef_construction_, i);
 
     // connect new_id to each candidate, both directions
-    int connect_count = std::min(static_cast<int>(candidates.size()), M_);
-    for (int j = 0; j < connect_count; j++) {
-      const auto &c = candidates[j];
+    int max_neighbors = (i == 0) ? M0_ : M_;
+
+    // int connect_count =
+    //     std::min(static_cast<int>(candidates.size()), max_neighbors);
+    // for (int j = 0; j < connect_count; j++) {
+    //   const auto &c = candidates[j];
+    //   nodes_[new_id].neighbors[i].push_back(c.id);
+    //   nodes_[c.id].neighbors[i].push_back(new_id);
+    //   trim_neighbors(c.id, i);
+    // }
+    auto selected = select_neighbors_heuristic(v, candidates, max_neighbors);
+
+    for (const auto &c : selected) {
       nodes_[new_id].neighbors[i].push_back(c.id);
       nodes_[c.id].neighbors[i].push_back(new_id);
+
       trim_neighbors(c.id, i);
     }
 

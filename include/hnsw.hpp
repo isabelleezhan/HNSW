@@ -32,7 +32,8 @@ public:
 private:
   int ef_construction_;     // candidate-list width used during insertion
   int dim_;                 // dim: vector dimensionality
-  int M_;                   // max neighbors per layer (M0 = 2*M at layer 0)
+  int M_;                   // max neighbors per layer 
+  int M0_;                  // max neighbors at layer 0
   std::vector<Vec> data_;   // actual vector data, indexed by VecId
   std::vector<Node> nodes_; // graph structure, indexed by VecId
   VecId entry_point_ = -1;  // where search starts
@@ -42,6 +43,11 @@ private:
   float mL_;                // normalization factor = 1 / ln(M)
 
   int random_level() const;
+  std::vector<Neighbor> select_neighbors_heuristic(
+    const Vec& query,
+    const std::vector<Neighbor>& candidates,
+    int max_neighbors
+) const;
 };
 
 #endif
